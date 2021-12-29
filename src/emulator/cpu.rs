@@ -61,7 +61,7 @@ impl Cpu {
         self.enable = 1;
         while self.enable == 1 {
             println!("{:02X}", self.memory[self.pc as usize]);
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::thread::sleep(std::time::Duration::from_millis(100));
             match self.memory[self.pc as usize] {
                 0x00 => {
                     // NOP
@@ -363,7 +363,7 @@ impl Cpu {
                 0x31 => {
                     // LXI SP,D16
                     self.pc += 1; // instruction
-                    self.sp = (self.memory[self.pc as usize] as u16) << 8 | self.memory[self.pc as usize] as u16;
+                    self.sp = (self.memory[(self.pc+1) as usize] as u16) << 8 | self.memory[self.pc as usize] as u16;
                     self.pc += 2;
                 }
                 0x32 => {

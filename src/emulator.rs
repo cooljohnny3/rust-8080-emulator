@@ -1,11 +1,18 @@
 use std::{path::Path, fs::{File, read_to_string}, io::Read, time::Duration};
 
-use sdl2::{pixels::Color, event::Event, keyboard::Keycode, rect::Point};
+use sdl2::{pixels::Color, event::Event, keyboard::Keycode, video::Window, render::Canvas, Sdl};
 
 mod cpu;
 
+// Actual window dimensions
+const SCREEN_WIDTH: usize = 224;
+const SCREEN_HEIGHT: usize = 256;
+
 pub struct Emulator {
+    breakpoints: Vec<u16>,
     cpu: cpu::Cpu,
+    sdl_context: Sdl,
+    canvas: Canvas<Window>,
 }
 
 impl Emulator {
@@ -19,8 +26,24 @@ impl Emulator {
             panic!("Invalid flag");
         }
 
+        let sdl_context = sdl2::init().unwrap();
+        let video_subsystem = sdl_context.video().unwrap();
+        let window = video_subsystem.window("Space Invaders", SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+            .position_centered()
+            .build()
+            .unwrap();
+        let canvas = window.into_canvas().build().unwrap();
+
+        let breakpoints: Vec<u16> = vec![
+            // Add any breakpoints here
+            0x1925,
+        ];
+
         Emulator {
+            breakpoints,
             cpu: cpu::Cpu::new(program),
+            sdl_context,
+            canvas,
         }
     }
 
@@ -45,17 +68,7 @@ impl Emulator {
     }
 
     pub fn start(&mut self) {
-        const SCREEN_SIZE: usize = 0x4000 - 0x2400;
-        let sdl_context = sdl2::init().unwrap();
-        let video_subsystem = sdl_context.video().unwrap();
-    
-        let window = video_subsystem.window("Space Invaders", 256, 224)
-            .position_centered()
-            .build()
-            .unwrap();
-    
-        let mut canvas = window.into_canvas().build().unwrap();
-        let mut event_pump = sdl_context.event_pump().unwrap();
+        let mut event_pump = self.sdl_context.event_pump().unwrap();
 
         'running: loop {
             for event in event_pump.poll_iter() {
@@ -66,48 +79,100 @@ impl Emulator {
                     },
                     Event::KeyDown { keycode: Some(Keycode::P), .. } => {
                         if self.cpu.enable != 0 {
+                            println!("Stopping");
                             self.cpu.enable = 0;
                         } else {
+                            println!("Running");
                             self.cpu.enable = 1;
                         }
-                    }
+                    },
+                    Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
+                        self.clear_screen();
+
+                        self.cpu.enable = 1;
+                        self.cpu.cycle();
+                        self.cpu.enable = 0;
+
+                        self.update_screen();
+                        self.cpu.print_registers();
+                    },
                     _ => {}
                 }
             }
+
             // The rest of the game loop goes here...
             if self.cpu.enable != 0 {
-                // Clear screen
-                canvas.set_draw_color(Color::RGB(0, 0, 0));
-                canvas.clear();
+                self.clear_screen();
 
                 self.cpu.cycle();
+                self.check_breakpoint();
 
-                // Draw screen
-                canvas.set_draw_color(Color::RGB(255, 255, 255));
-                // let points: [Point; SCREEN_SIZE] = [Point::new(0, 0); SCREEN_SIZE];
-                for index in 0..SCREEN_SIZE {
-                    // point.x = index as i32;
-                    // point.y = (index % 224) as i32;
-                    // println!("{:X}", self.cpu.memory[(index % 224) + 0x2400]);
-                    let byte = self.cpu.memory[index + 0x2400];
-                    if byte != 0 {
-                        let mut mask: u8 = 1;
-                        for i in 1..8 {
-                            if byte & mask != 0 {
-                                let x: i32 = (index as i32 / 256) + i;
-                                let y: i32 = 256 - (index as i32 % 256) + i;
-                                canvas.draw_point((y, x)).unwrap();
-                            }
-                            mask = mask << 1;
-                        }
-                    }
-                    
-                }
-                // canvas.draw_points(&points[..]).unwrap();
-                canvas.present();
+                self.update_screen();
             }
 
-            // std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(2 * Duration::from_micros(1)); // Should be 2Mhz
+        }
+    }
+
+    fn check_breakpoint(&mut self) {
+        for breakpoint in &self.breakpoints {
+            if self.cpu.pc == *breakpoint {
+                self.cpu.enable = 0;
+                println!("BREAK {:04X}", self.cpu.pc);
+                self.cpu.print_registers();
+                return;
+            }
+        }
+    }
+
+    fn clear_screen(&mut self) {
+        self.canvas.set_draw_color(Color::BLACK);
+        self.canvas.clear();
+    }
+
+    fn update_screen(&mut self) {
+        self.canvas.set_draw_color(Color::WHITE);
+        for byte_index in 0x2400..0x3FFF {
+            let byte = self.cpu.memory[byte_index];
+            if byte != 0 {
+                let coordinates = Emulator::byte_to_xy(byte, byte_index);
+                for coordinate in coordinates {
+                    self.canvas.draw_point((coordinate.0, coordinate.1)).unwrap();
+                }
+            }
+        }
+        self.canvas.present();
+    }
+
+    fn byte_to_xy(byte: u8, byte_index: usize) -> Vec<(i32, i32)> {
+        let mut xy_pairs: Vec<(i32, i32)> = Vec::new();
+        let mask: u8 = 0b10000000;
+        for i in 0..8 {
+            if byte & (mask >> i) != 0 {
+                let index = (byte_index - 0x2400) * 8;
+                let x: i32 = ((index / SCREEN_HEIGHT)) as i32;
+                let y: i32 = ((index % SCREEN_HEIGHT) + i) as i32;
+                xy_pairs.push((x, y));
+            }
+        }
+        // println!("{} {:?}", byte_index, xy_pairs);
+        xy_pairs
+    }
+}
+
+#[cfg(test)]
+mod byte_to_xy_tests {
+    use super::Emulator;
+
+    #[test]
+    fn it_works() {
+        let mut result;
+
+        for byte in 0..0xff {
+            for byte_index in 0x2400..0x3fff {
+                result = Emulator::byte_to_xy(byte, byte_index);
+                assert_eq!(result.len(), byte.count_ones() as usize);
+            }
         }
     }
 }

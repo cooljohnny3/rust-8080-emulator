@@ -19,7 +19,7 @@ pub struct Cpu {
     h: u8,
     l: u8,
     sp: u16,
-    pc: u16,
+    pub pc: u16,
     pub memory: [u8; 0xffff],
     condition_codes: ConditionCodes,
     pub enable: u8,
@@ -39,7 +39,7 @@ impl Cpu {
             e: 0,
             h: 0,
             l: 0,
-            sp: 0xffff - 1,
+            sp: 0xffff-1,
             pc: 0,
             memory: memory,
             condition_codes: ConditionCodes {
@@ -58,11 +58,7 @@ impl Cpu {
     }
 
     pub fn cycle(&mut self) {
-        // self.print_registers();
-        // if self.pc == 0x1A65 {
-        //     self.enable = 0;
-        //     return;
-        // }
+        // println!("{:04X}: {:02X}", self.pc, self.memory[self.pc as usize]);
         match self.memory[self.pc as usize] {
             0x00 => {
                 // NOP
@@ -169,7 +165,7 @@ impl Cpu {
                 // LXI D,D16
                 self.pc += 1; // instruction
                 self.e = self.memory[self.pc as usize];
-                self.d = self.memory[self.pc as usize];
+                self.d = self.memory[(self.pc+1) as usize];
                 self.pc += 2;
             }
             0x12 => {
@@ -315,8 +311,8 @@ impl Cpu {
                 // DAD H
                 self.pc += 1; // instruction
                 let answer = self.get_hl() + self.get_hl();
+                self.update_condition_codes(answer, false, false, false, true, false);
                 self.set_hl(answer);
-                // TODO: set CY
             }
             0x2a => {
                 // JHJD adr
@@ -415,7 +411,8 @@ impl Cpu {
             0x3a => {
                 // LDA adr
                 self.pc += 1; // instruction
-                let adr = (self.memory[self.pc as usize] as u16) << 8 | self.memory[self.pc as usize] as u16;
+                let adr = (self.memory[(self.pc+1) as usize] as u16) << 8 | self.memory[self.pc as usize] as u16;
+                self.pc += 2;
                 self.a = self.memory[adr as usize];
             }
             0x3b => {
@@ -1654,18 +1651,37 @@ impl Cpu {
     #[allow(dead_code)]
     pub fn print_registers(&self) {
         println!(
-            "a={}\nb={}\nc={}\nd={}\ne={}\nh={:02X}\nl={:02X}\nsp={:02X}\npc={:02X}\n{:?}",
+            "a={:02X} ({})\nb={:02X} ({})\nc={:02X} ({})\nd={:02X} ({})\ne={:02X} ({})\nh={:02X} ({})\nl={:02X} ({})\nsp={:04X}\npc={:04X}\n{:?}",
+            self.a,
             self.a,
             self.b,
+            self.b,
+            self.c,
             self.c,
             self.d,
+            self.d,
+            self.e,
             self.e,
             self.h,
+            self.h,
+            self.l,
             self.l,
             self.sp,
             self.pc,
             self.condition_codes
         );
+        println!("(BC)= {}", self.memory[self.get_bc() as usize]);
+        println!("(DE)= {}", self.memory[self.get_de() as usize]);
+        println!("(HL)= {}", self.memory[self.get_hl() as usize]);
+        if self.sp < 0x2400 {
+            print!("Stack: ");
+            let mut temp = self.sp as usize;
+            while temp < 0x2400 {
+                print!("{:02X} ", self.memory[temp]);
+                temp += 1;
+            }
+            println!();
+        }
     }
 
     #[allow(dead_code)]
@@ -1675,9 +1691,11 @@ impl Cpu {
 
     #[allow(dead_code)]
     pub fn print_memory_width(&self, width: usize) {
+        print!("0000");
         for (index, code) in (&self.memory).into_iter().enumerate() {
             if index % width == 0 {
                 println!("{:02X}", code);
+                print!("{:04X} ", index);
             } else {
                 print!("{:02X} ", code);
             }

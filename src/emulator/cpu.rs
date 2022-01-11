@@ -92,7 +92,7 @@ impl Cpu {
             0x05 => {
                 // DCR B
                 self.pc += 1; // instruction
-                let answer: u16 = (self.b - 1) as u16;
+                let answer: u16 = self.b.overflowing_sub(1).0 as u16;
                 self.update_condition_codes(answer, true, true, true, false, true);
                 self.b = answer as u8;
             }
@@ -1563,7 +1563,7 @@ impl Cpu {
             0xfe => {
                 // CPI D8
                 self.pc += 1; // instruction
-                let answer: u8 = self.a - self.memory[self.pc as usize];
+                let answer: u8 = self.a.overflowing_sub(self.memory[self.pc as usize]).0;
                 self.pc += 1;
                 self.update_condition_codes(answer as u16, true, true, true, true, true);
             }

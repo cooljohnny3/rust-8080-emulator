@@ -1,6 +1,6 @@
 use std::{path::Path, fs::{File, read_to_string}, io::Read, time::Duration};
 
-use sdl2::{pixels::Color, event::Event, keyboard::Keycode, video::Window, render::Canvas, Sdl};
+use sdl2::{pixels::Color, event::Event, keyboard::Keycode, video::Window, render::Canvas, Sdl, rect::Point};
 
 mod cpu;
 
@@ -41,7 +41,7 @@ impl Emulator {
 
         let breakpoints: Vec<u16> = vec![
             // Add any breakpoints here
-            0x1925,
+            0x18DF,
         ];
 
         Emulator {
@@ -108,11 +108,9 @@ impl Emulator {
             // The rest of the game loop goes here...
             if self.cpu.enable != 0 {
                 self.clear_screen();
-
                 self.cpu.cycle();
-                self.check_breakpoint();
-
                 self.update_screen();
+                self.check_breakpoint();
             }
 
             std::thread::sleep(2 * Duration::from_micros(1)); // Should be 2Mhz
@@ -140,28 +138,25 @@ impl Emulator {
         for byte_index in 0x2400..0x3FFF {
             let byte = self.cpu.memory[byte_index];
             if byte != 0 {
-                let coordinates = Emulator::byte_to_xy(byte, byte_index);
-                for coordinate in coordinates {
-                    self.canvas.draw_point((coordinate.0, coordinate.1)).unwrap();
-                }
+                let points = Emulator::byte_to_points(byte, byte_index);
+                self.canvas.draw_points(points.as_slice()).unwrap();
             }
         }
         self.canvas.present();
     }
 
-    fn byte_to_xy(byte: u8, byte_index: usize) -> Vec<(i32, i32)> {
-        let mut xy_pairs: Vec<(i32, i32)> = Vec::new();
+    fn byte_to_points(byte: u8, byte_index: usize) -> Vec<Point> {
+        let mut points: Vec<Point> = Vec::new();
         let mask: u8 = 0b10000000;
         for i in 0..8 {
             if byte & (mask >> i) != 0 {
                 let index = (byte_index - 0x2400) * 8;
                 let x: i32 = ((index / LOGICAL_SCREEN_HEIGHT)) as i32;
-                let y: i32 = ((index % LOGICAL_SCREEN_HEIGHT) + i) as i32;
-                xy_pairs.push((x, y));
+                let y: i32 = (LOGICAL_SCREEN_HEIGHT - ((index % LOGICAL_SCREEN_HEIGHT) + i)) as i32;
+                points.push(Point::new(x, y));
             }
         }
-        // println!("{} {:?}", byte_index, xy_pairs);
-        xy_pairs
+        points
     }
 }
 
@@ -175,7 +170,7 @@ mod byte_to_xy_tests {
 
         for byte in 0..0xff {
             for byte_index in 0x2400..0x3fff {
-                result = Emulator::byte_to_xy(byte, byte_index);
+                result = Emulator::byte_to_points(byte, byte_index);
                 assert_eq!(result.len(), byte.count_ones() as usize);
             }
         }

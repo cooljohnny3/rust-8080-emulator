@@ -5,8 +5,12 @@ use sdl2::{pixels::Color, event::Event, keyboard::Keycode, video::Window, render
 mod cpu;
 
 // Actual window dimensions
-const SCREEN_WIDTH: usize = 224;
-const SCREEN_HEIGHT: usize = 256;
+const SCREEN_WIDTH: usize = 448;
+const SCREEN_HEIGHT: usize = 512;
+
+// Logical window dimmensions
+const LOGICAL_SCREEN_WIDTH: usize = 224;
+const LOGICAL_SCREEN_HEIGHT: usize = 256;
 
 pub struct Emulator {
     breakpoints: Vec<u16>,
@@ -32,7 +36,8 @@ impl Emulator {
             .position_centered()
             .build()
             .unwrap();
-        let canvas = window.into_canvas().build().unwrap();
+        let mut canvas = window.into_canvas().build().unwrap();
+        canvas.set_logical_size(LOGICAL_SCREEN_WIDTH as u32, LOGICAL_SCREEN_HEIGHT as u32).unwrap();
 
         let breakpoints: Vec<u16> = vec![
             // Add any breakpoints here
@@ -150,8 +155,8 @@ impl Emulator {
         for i in 0..8 {
             if byte & (mask >> i) != 0 {
                 let index = (byte_index - 0x2400) * 8;
-                let x: i32 = ((index / SCREEN_HEIGHT)) as i32;
-                let y: i32 = ((index % SCREEN_HEIGHT) + i) as i32;
+                let x: i32 = ((index / LOGICAL_SCREEN_HEIGHT)) as i32;
+                let y: i32 = ((index % LOGICAL_SCREEN_HEIGHT) + i) as i32;
                 xy_pairs.push((x, y));
             }
         }

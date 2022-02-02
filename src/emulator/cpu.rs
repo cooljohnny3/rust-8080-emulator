@@ -1104,7 +1104,7 @@ impl Cpu {
             0xaf => {
                 // ORA A
                 self.pc += 1; // instruction
-                let answer: u16 = (self.a | self.a) as u16;
+                let answer: u16 = (self.a ^ self.a) as u16;
                 self.update_condition_codes(answer, true, true, true, true, true);
                 self.a = answer as u8;
             }

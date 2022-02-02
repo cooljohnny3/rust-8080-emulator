@@ -23,9 +23,9 @@ impl Emulator {
     pub fn new(flag: &String, path: &Path) -> Emulator {
         let program;
         if flag == "-b" {
-            program = Emulator::read_program_bin(path);
+            program = read_program_bin(path);
         } else if flag == "-t" {
-            program = Emulator::read_program_text(path);
+            program = read_program_text(path);
         } else {
             panic!("Invalid flag");
         }
@@ -50,26 +50,6 @@ impl Emulator {
             sdl_context,
             canvas,
         }
-    }
-
-    fn read_program_text(path: &Path) -> Vec<u8> {
-        let file_string = read_to_string(&path).expect("Failed to read file.");
-        file_string
-            .split(char::is_whitespace)
-            .filter(|item| !item.is_empty())
-            .enumerate()
-            .map(|(index, item)| {
-                u8::from_str_radix(item, 16)
-                    .expect(format!("Failed to parse opcode at: {} '{}'", index + 1, item).as_str())
-            })
-            .collect()
-    }
-    
-    fn read_program_bin(path: &Path) -> Vec<u8> {
-        // TODO: Better error handling
-        let mut buffer: Vec<u8> = Vec::new();
-        File::open(path).unwrap().read_to_end(&mut buffer).unwrap();
-        buffer
     }
 
     pub fn start(&mut self) {
@@ -138,31 +118,51 @@ impl Emulator {
         for byte_index in 0x2400..0x3FFF {
             let byte = self.cpu.memory[byte_index];
             if byte != 0 {
-                let points = Emulator::byte_to_points(byte, byte_index);
+                let points = byte_to_points(byte, byte_index);
                 self.canvas.draw_points(points.as_slice()).unwrap();
             }
         }
         self.canvas.present();
     }
+}
 
-    fn byte_to_points(byte: u8, byte_index: usize) -> Vec<Point> {
-        let mut points: Vec<Point> = Vec::new();
-        let mask: u8 = 0b10000000;
-        for i in 0..8 {
-            if byte & (mask >> i) != 0 {
-                let index = (byte_index - 0x2400) * 8;
-                let x: i32 = ((index / LOGICAL_SCREEN_HEIGHT)) as i32;
-                let y: i32 = (LOGICAL_SCREEN_HEIGHT - ((index % LOGICAL_SCREEN_HEIGHT) + i)) as i32;
-                points.push(Point::new(x, y));
-            }
+fn read_program_text(path: &Path) -> Vec<u8> {
+    let file_string = read_to_string(&path).expect("Failed to read file.");
+    file_string
+        .split(char::is_whitespace)
+        .filter(|item| !item.is_empty())
+        .enumerate()
+        .map(|(index, item)| {
+            u8::from_str_radix(item, 16)
+                .expect(format!("Failed to parse opcode at: {} '{}'", index + 1, item).as_str())
+        })
+        .collect()
+}
+
+fn read_program_bin(path: &Path) -> Vec<u8> {
+    // TODO: Better error handling
+    let mut buffer: Vec<u8> = Vec::new();
+    File::open(path).unwrap().read_to_end(&mut buffer).unwrap();
+    buffer
+}
+
+fn byte_to_points(byte: u8, byte_index: usize) -> Vec<Point> {
+    let mut points: Vec<Point> = Vec::new();
+    let mask: u8 = 0b10000000;
+    for i in 0..8 {
+        if byte & (mask >> i) != 0 {
+            let index = (byte_index - 0x2400) * 8;
+            let x: i32 = ((index+i) % LOGICAL_SCREEN_HEIGHT) as i32;
+            let y: i32 = ((index / LOGICAL_SCREEN_HEIGHT)) as i32;
+            points.push(Point::new( y, LOGICAL_SCREEN_HEIGHT as i32 - x));
         }
-        points
     }
+    points
 }
 
 #[cfg(test)]
 mod byte_to_xy_tests {
-    use super::Emulator;
+    use super::*;
 
     #[test]
     fn it_works() {
@@ -170,7 +170,7 @@ mod byte_to_xy_tests {
 
         for byte in 0..0xff {
             for byte_index in 0x2400..0x3fff {
-                result = Emulator::byte_to_points(byte, byte_index);
+                result = byte_to_points(byte, byte_index);
                 assert_eq!(result.len(), byte.count_ones() as usize);
             }
         }
